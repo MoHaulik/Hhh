@@ -142,7 +142,7 @@
         let isPlaying = false, currentScenario = 1, isDecisionTime = false;
         let decisionPanel, choiceOrbs = [], confirmationPanel;
         let currentChoices = [], selectedChoice = null, isConfirming = false;
-        let transitionEffect = null;
+        let transitionSphere = null, transitionText = null;
         
         // Training scenarios configuration
         const scenarios = {
@@ -284,6 +284,7 @@
             
             // Clear existing UI elements
             clearDecisionUI();
+            clearTransitionEffect();
             
             loadVideo(scenarios[scenarioId].video);
             updateProgress();
@@ -337,9 +338,9 @@
             
             isDecisionTime = true;
             
-            // Slow down video to 0.3x speed and mute audio
+            // Slow down video and mute audio during decision
             videoElement.playbackRate = 0.3;
-            videoElement.muted = true; // Stop audio during decision time
+            videoElement.muted = true;
             
             const scenario = scenarios[currentScenario];
             currentChoices = scenario.choices;
@@ -348,104 +349,88 @@
             updateStatus('Decision time - Select your response');
         }
         
+        function createRoundedRect(ctx, x, y, width, height, radius) {
+            ctx.beginPath();
+            ctx.moveTo(x + radius, y);
+            ctx.lineTo(x + width - radius, y);
+            ctx.quadraticCurveTo(x + width, y, x + width, y + radius);
+            ctx.lineTo(x + width, y + height - radius);
+            ctx.quadraticCurveTo(x + width, y + height, x + width - radius, y + height);
+            ctx.lineTo(x + radius, y + height);
+            ctx.quadraticCurveTo(x, y + height, x, y + height - radius);
+            ctx.lineTo(x, y + radius);
+            ctx.quadraticCurveTo(x, y, x + radius, y);
+            ctx.closePath();
+        }
+        
         function createDecisionPanel(text, choices) {
             clearDecisionUI();
             
             // Create main decision panel
             decisionPanel = new THREE.Group();
-            decisionPanel.position.set(0, 1.6, -2.2);
+            decisionPanel.position.set(0, 1.8, -2.2);
             
-            // Create rounded background using geometry manipulation
-            const shape = new THREE.Shape();
-            const width = 3.0;
-            const height = 1.8;
-            const radius = 0.2;
+            // Create rounded panel geometry using canvas for rounded corners
+            const panelCanvas = document.createElement('canvas');
+            panelCanvas.width = 1024;
+            panelCanvas.height = 612;
+            const panelCtx = panelCanvas.getContext('2d');
             
-            shape.moveTo(-width/2 + radius, -height/2);
-            shape.lineTo(width/2 - radius, -height/2);
-            shape.quadraticCurveTo(width/2, -height/2, width/2, -height/2 + radius);
-            shape.lineTo(width/2, height/2 - radius);
-            shape.quadraticCurveTo(width/2, height/2, width/2 - radius, height/2);
-            shape.lineTo(-width/2 + radius, height/2);
-            shape.quadraticCurveTo(-width/2, height/2, -width/2, height/2 - radius);
-            shape.lineTo(-width/2, -height/2 + radius);
-            shape.quadraticCurveTo(-width/2, -height/2, -width/2 + radius, -height/2);
+            // Draw rounded rectangle background with border
+            const radius = 40;
             
-            const panelGeometry = new THREE.ShapeGeometry(shape);
+            // Border (darker)
+            panelCtx.fillStyle = '#E5E2DD';
+            createRoundedRect(panelCtx, 10, 10, 1004, 592, radius);
+            panelCtx.fill();
+            
+            // Main panel (lighter)
+            panelCtx.fillStyle = '#F8F6F3';
+            createRoundedRect(panelCtx, 20, 20, 984, 572, radius - 10);
+            panelCtx.fill();
+            
+            // Add subtle inner shadow for depth
+            const gradient = panelCtx.createRadialGradient(512, 306, 100, 512, 306, 500);
+            gradient.addColorStop(0, 'rgba(0, 0, 0, 0)');
+            gradient.addColorStop(1, 'rgba(0, 0, 0, 0.05)');
+            panelCtx.fillStyle = gradient;
+            createRoundedRect(panelCtx, 20, 20, 984, 572, radius - 10);
+            panelCtx.fill();
+            
+            const panelTexture = new THREE.CanvasTexture(panelCanvas);
             const panelMaterial = new THREE.MeshBasicMaterial({
-                color: 0xF8F6F3, // Warm beige-white
+                map: panelTexture,
                 transparent: true,
                 opacity: 0.95
             });
-            const panelMesh = new THREE.Mesh(panelGeometry, panelMaterial);
             
-            // Add subtle shadow/border effect with rounded corners
-            const borderShape = new THREE.Shape();
-            const borderWidth = 3.1;
-            const borderHeight = 1.9;
-            
-            borderShape.moveTo(-borderWidth/2 + radius, -borderHeight/2);
-            borderShape.lineTo(borderWidth/2 - radius, -borderHeight/2);
-            borderShape.quadraticCurveTo(borderWidth/2, -borderHeight/2, borderWidth/2, -borderHeight/2 + radius);
-            borderShape.lineTo(borderWidth/2, borderHeight/2 - radius);
-            borderShape.quadraticCurveTo(borderWidth/2, borderHeight/2, borderWidth/2 - radius, borderHeight/2);
-            borderShape.lineTo(-borderWidth/2 + radius, borderHeight/2);
-            borderShape.quadraticCurveTo(-borderWidth/2, borderHeight/2, -borderWidth/2, borderHeight/2 - radius);
-            borderShape.lineTo(-borderWidth/2, -borderHeight/2 + radius);
-            borderShape.quadraticCurveTo(-borderWidth/2, -borderHeight/2, -borderWidth/2 + radius, -borderHeight/2);
-            
-            const borderGeometry = new THREE.ShapeGeometry(borderShape);
-            const borderMaterial = new THREE.MeshBasicMaterial({
-                color: 0xE5E2DD, // Slightly darker beige for border
-                transparent: true,
-                opacity: 0.8
-            });
-            const borderMesh = new THREE.Mesh(borderGeometry, borderMaterial);
-            borderMesh.position.z = -0.001;
-            decisionPanel.add(borderMesh);
+            const panelMesh = new THREE.Mesh(
+                new THREE.PlaneGeometry(3.0, 1.8),
+                panelMaterial
+            );
             decisionPanel.add(panelMesh);
             
-            // Create text canvas with rounded appearance
-            const canvas = document.createElement('canvas');
-            canvas.width = 1200;
-            canvas.height = 720;
-            const ctx = canvas.getContext('2d');
-            
-            // Clear canvas first
-            ctx.clearRect(0, 0, 1200, 720);
-            
-            // Create rounded rectangle background
-            const canvasRadius = 40;
-            ctx.beginPath();
-            ctx.roundRect(0, 0, 1200, 720, canvasRadius);
-            ctx.fillStyle = '#FAF8F5'; // Very light warm beige
-            ctx.fill();
-            
-            // Add subtle inner shadow for depth
-            ctx.shadowColor = 'rgba(0, 0, 0, 0.1)';
-            ctx.shadowBlur = 20;
-            ctx.shadowOffsetY = 5;
-            ctx.beginPath();
-            ctx.roundRect(10, 10, 1180, 700, canvasRadius - 10);
-            ctx.fillStyle = '#F8F6F3';
-            ctx.fill();
-            ctx.shadowColor = 'transparent';
+            // Create text canvas
+            const textCanvas = document.createElement('canvas');
+            textCanvas.width = 1024;
+            textCanvas.height = 612;
+            const textCtx = textCanvas.getContext('2d');
             
             // Text styling
-            ctx.fillStyle = '#2C3E50'; // Dark blue-gray for readability
-            ctx.font = 'bold 32px -apple-system, BlinkMacSystemFont, Arial, sans-serif';
-            ctx.textAlign = 'center';
-            ctx.textBaseline = 'top';
+            textCtx.fillStyle = '#2C3E50';
+            textCtx.font = 'bold 28px -apple-system, BlinkMacSystemFont, Arial, sans-serif';
+            textCtx.textAlign = 'center';
+            textCtx.textBaseline = 'top';
             
             // Word wrap text
             const words = text.split(' ');
             const lines = [];
             let currentLine = '';
-            const maxWidth = 1000;
+            const maxWidth = 900;
             
             words.forEach(word => {
                 const testLine = currentLine + word + ' ';
-                const metrics = ctx.measureText(testLine);
+                const metrics = textCtx.measureText(testLine);
                 if (metrics.width > maxWidth && currentLine !== '') {
                     lines.push(currentLine);
                     currentLine = word + ' ';
@@ -456,25 +441,25 @@
             lines.push(currentLine);
             
             // Draw lines with proper spacing
-            const lineHeight = 45;
-            const startY = 120;
+            const lineHeight = 38;
+            const startY = 80;
             lines.forEach((line, index) => {
-                ctx.fillText(line, 600, startY + (index * lineHeight));
+                textCtx.fillText(line, 512, startY + (index * lineHeight));
             });
             
-            // Instructions with softer styling
-            ctx.font = '24px -apple-system, BlinkMacSystemFont, Arial, sans-serif';
-            ctx.fillStyle = '#5D6D7E'; // Softer gray
-            ctx.fillText('Point and select a numbered choice below:', 600, startY + (lines.length * lineHeight) + 60);
+            // Instructions
+            textCtx.font = '22px -apple-system, BlinkMacSystemFont, Arial, sans-serif';
+            textCtx.fillStyle = '#5D6D7E';
+            textCtx.fillText('Point and select a numbered choice below:', 512, startY + (lines.length * lineHeight) + 50);
             
-            const textTexture = new THREE.CanvasTexture(canvas);
+            const textTexture = new THREE.CanvasTexture(textCanvas);
             const textMaterial = new THREE.MeshBasicMaterial({
                 map: textTexture,
                 transparent: true
             });
             
             const textMesh = new THREE.Mesh(
-                new THREE.PlaneGeometry(2.9, 1.7),
+                new THREE.PlaneGeometry(2.95, 1.75),
                 textMaterial
             );
             textMesh.position.z = 0.01;
@@ -482,7 +467,7 @@
             
             scene.add(decisionPanel);
             
-            // Create choice orbs
+            // Create choice orbs positioned below the text panel
             createChoiceOrbs(choices);
         }
         
@@ -490,30 +475,27 @@
             choiceOrbs = [];
             
             const orbGroup = new THREE.Group();
-            orbGroup.position.set(0, 0.6, -1.5); // Moved down and closer to be in front of panel
+            orbGroup.position.set(0, 0.6, -1.8); // Moved down below text panel
             
             choices.forEach((choice, index) => {
-                // Arrange orbs in two half-moon arcs
-                let angle, radius, y;
+                // Arrange orbs in two rows
+                let x, y, z;
                 
                 if (index < 3) {
-                    // Upper arc
-                    angle = (index / 2) * Math.PI * 0.6 - Math.PI * 0.3; // 60 degree spread
-                    radius = 0.8;
-                    y = 0.2;
+                    // Top row
+                    x = (index - 1) * 0.6; // -0.6, 0, 0.6
+                    y = 0.15;
+                    z = 0;
                 } else {
-                    // Lower arc
-                    angle = ((index - 3) / 1) * Math.PI * 0.6 - Math.PI * 0.3; // 60 degree spread
-                    radius = 0.8;
-                    y = -0.2;
+                    // Bottom row
+                    x = (index - 3.5) * 0.6; // -0.3, 0.3
+                    y = -0.15;
+                    z = 0;
                 }
                 
-                const x = Math.sin(angle) * radius;
-                const z = Math.cos(angle) * radius;
-                
-                const orbGeometry = new THREE.SphereGeometry(0.06, 16, 16);
+                const orbGeometry = new THREE.SphereGeometry(0.08, 16, 16);
                 const orbMaterial = new THREE.MeshBasicMaterial({
-                    color: 0x8FB8B8, // Soft teal-gray color for better visibility
+                    color: 0x3A5FCD, // Royal blue color for better visibility
                     transparent: true,
                     opacity: 0.9
                 });
@@ -521,15 +503,17 @@
                 const orb = new THREE.Mesh(orbGeometry, orbMaterial);
                 orb.position.set(x, y, z);
                 
-                // Add subtle glow effect
-                const glowGeometry = new THREE.SphereGeometry(0.08, 12, 12);
-                const glowMaterial = new THREE.MeshBasicMaterial({
-                    color: 0xB8D4D4, // Light teal glow
+                // Add outer glow ring
+                const ringGeometry = new THREE.RingGeometry(0.09, 0.11, 16);
+                const ringMaterial = new THREE.MeshBasicMaterial({
+                    color: 0x87CEEB, // Light blue
                     transparent: true,
-                    opacity: 0.5
+                    opacity: 0.6,
+                    side: THREE.DoubleSide
                 });
-                const glow = new THREE.Mesh(glowGeometry, glowMaterial);
-                orb.add(glow);
+                const ring = new THREE.Mesh(ringGeometry, ringMaterial);
+                ring.lookAt(camera.position);
+                orb.add(ring);
                 
                 // Add number label with better contrast
                 const numberCanvas = document.createElement('canvas');
@@ -537,8 +521,15 @@
                 numberCanvas.height = 128;
                 const numberCtx = numberCanvas.getContext('2d');
                 
-                numberCtx.fillStyle = '#FFFFFF'; // White for better contrast
-                numberCtx.font = 'bold 64px Arial';
+                // White background circle for number
+                numberCtx.fillStyle = '#FFFFFF';
+                numberCtx.beginPath();
+                numberCtx.arc(64, 64, 50, 0, Math.PI * 2);
+                numberCtx.fill();
+                
+                // Blue number
+                numberCtx.fillStyle = '#1E3A8A';
+                numberCtx.font = 'bold 56px Arial';
                 numberCtx.textAlign = 'center';
                 numberCtx.textBaseline = 'middle';
                 numberCtx.fillText(choice.id.toString(), 64, 64);
@@ -550,17 +541,17 @@
                 });
                 
                 const numberMesh = new THREE.Mesh(
-                    new THREE.PlaneGeometry(0.08, 0.08),
+                    new THREE.PlaneGeometry(0.12, 0.12),
                     numberMaterial
                 );
-                numberMesh.position.z = 0.07;
+                numberMesh.position.z = 0.09;
                 orb.add(numberMesh);
                 
                 orb.userData = {
                     isChoice: true,
                     choice: choice,
                     originalMaterial: orbMaterial,
-                    glow: glow
+                    ring: ring
                 };
                 
                 orbGroup.add(orb);
@@ -592,7 +583,7 @@
             controller.getWorldPosition(controllerPos);
             
             let closestChoice = null;
-            let closestDistance = 0.15;
+            let closestDistance = 0.2;
             
             choiceOrbs.forEach(orb => {
                 const orbPos = new THREE.Vector3();
@@ -609,19 +600,19 @@
         }
         
         function selectChoice(choiceOrb) {
-            // Reset all orbs to default teal-gray
+            // Reset all orbs to default blue
             choiceOrbs.forEach(orb => {
-                orb.userData.originalMaterial.color.setHex(0x8FB8B8); // Soft teal-gray
-                orb.userData.glow.material.opacity = 0.5;
+                orb.userData.originalMaterial.color.setHex(0x3A5FCD);
+                orb.userData.ring.material.opacity = 0.6;
                 orb.scale.set(1, 1, 1);
             });
             
-            // Highlight selected with soft green
+            // Highlight selected with gold
             selectedChoice = choiceOrb.userData.choice;
-            choiceOrb.userData.originalMaterial.color.setHex(0xA8D5A8); // Soft green
-            choiceOrb.userData.glow.material.color.setHex(0xC8E6C8); // Light green glow
-            choiceOrb.userData.glow.material.opacity = 0.7;
-            choiceOrb.scale.set(1.15, 1.15, 1.15);
+            choiceOrb.userData.originalMaterial.color.setHex(0xFFD700);
+            choiceOrb.userData.ring.material.color.setHex(0xFFF8DC);
+            choiceOrb.userData.ring.material.opacity = 0.8;
+            choiceOrb.scale.set(1.2, 1.2, 1.2);
             
             showConfirmation(selectedChoice);
         }
@@ -629,139 +620,56 @@
         function showConfirmation(choice) {
             isConfirming = true;
             
-            // Create confirmation panel with rounded styling
+            // Create confirmation panel with rounded corners
             confirmationPanel = new THREE.Group();
             confirmationPanel.position.set(0, 1, -1.5);
             
-            // Background with border (simplified approach)
-            const borderGeometry = new THREE.PlaneGeometry(2.1, 1.0);
-            const borderMaterial = new THREE.MeshBasicMaterial({
-                color: 0xE5E2DD,
-                transparent: true,
-                opacity: 0.9
-            });
-            const borderMesh = new THREE.Mesh(borderGeometry, borderMaterial);
-            confirmationPanel.add(borderMesh);
+            // Create rounded confirmation panel
+            const confirmCanvas = document.createElement('canvas');
+            confirmCanvas.width = 700;
+            confirmCanvas.height = 400;
+            const confirmCtx = confirmCanvas.getContext('2d');
             
-            const panelGeometry = new THREE.PlaneGeometry(2.0, 0.9);
-            const panelMaterial = new THREE.MeshBasicMaterial({
-                color: 0xF8F6F3, // Same warm beige-white
-                transparent: true,
-                opacity: 0.95
-            });
-            const panelMesh = new THREE.Mesh(panelGeometry, panelMaterial);
-            panelMesh.position.z = 0.001;
-            confirmationPanel.add(panelMesh);
-            
-            // Text with rounded styling
-            const canvas = document.createElement('canvas');
-            canvas.width = 800;
-            canvas.height = 360;
-            const ctx = canvas.getContext('2d');
-            
-            // Clear canvas and create rounded background
-            ctx.clearRect(0, 0, 800, 360);
-            const canvasRadius = 30;
-            ctx.beginPath();
-            ctx.roundRect(0, 0, 800, 360, canvasRadius);
-            ctx.fillStyle = '#FAF8F5';
-            ctx.fill();
-            
-            ctx.fillStyle = '#2C3E50';
-            ctx.font = 'bold 36px -apple-system, BlinkMacSystemFont, Arial, sans-serif';
-            ctx.textAlign = 'center';
-            ctx.textBaseline = 'middle';
-            ctx.fillText('Are you sure?', 400, 100);
-            
-            ctx.font = '24px -apple-system, BlinkMacSystemFont, Arial, sans-serif';
-            ctx.fillStyle = '#34495E';
-            const choiceText = `Choice ${choice.id}: ${choice.text.substring(0, 35)}...`;
-            ctx.fillText(choiceText, 400, 150);
-            
-            ctx.fillStyle = '#27AE60'; // Soft green
-            ctx.font = 'bold 22px -apple-system, BlinkMacSystemFont, Arial, sans-serif';
-            ctx.fillText('Point UP to confirm', 400, 220);
-            ctx.fillStyle = '#E74C3C'; // Soft red
-            ctx.fillText('Point DOWN to cancel', 400, 260);
-            
-            const textTexture = new THREE.CanvasTexture(canvas);
-            const textMaterial = new THREE.MeshBasicMaterial({
-                map: textTexture,
-                transparent: true
-            });
-            
-            const textMesh = new THREE.Mesh(
-                new THREE.PlaneGeometry(1.9, 0.8),
-                textMaterial
-            );
-            textMesh.position.z = 0.01;
-            confirmationPanel.add(textMesh);
-            
-            scene.add(confirmationPanel);
-        }1.5);
-            
-            // Background with border
-            const borderGeometry = new THREE.PlaneGeometry(2.1, 1.0);
-            const borderMaterial = new THREE.MeshBasicMaterial({
-                color: 0xE5E2DD,
-                transparent: true,
-                opacity: 0.9
-            });
-            const borderMesh = new THREE.Mesh(borderGeometry, borderMaterial);
-            confirmationPanel.add(borderMesh);
-            
-            const panelGeometry = new THREE.PlaneGeometry(2.0, 0.9);
-            const panelMaterial = new THREE.MeshBasicMaterial({
-                color: 0xF8F6F3, // Same warm beige-white
-                transparent: true,
-                opacity: 0.95
-            });
-            const panelMesh = new THREE.Mesh(panelGeometry, panelMaterial);
-            panelMesh.position.z = 0.001;
-            confirmationPanel.add(panelMesh);
-            
-            // Text with rounded styling
-            const canvas = document.createElement('canvas');
-            canvas.width = 800;
-            canvas.height = 360;
-            const ctx = canvas.getContext('2d');
-            
-            // Rounded background
+            // Draw rounded background
             const radius = 30;
-            ctx.beginPath();
-            ctx.roundRect(20, 20, 760, 320, radius);
-            ctx.fillStyle = '#FAF8F5';
-            ctx.fill();
+            confirmCtx.fillStyle = '#E5E2DD';
+            createRoundedRect(confirmCtx, 10, 10, 680, 380, radius);
+            confirmCtx.fill();
             
-            ctx.fillStyle = '#2C3E50';
-            ctx.font = 'bold 36px -apple-system, BlinkMacSystemFont, Arial, sans-serif';
-            ctx.textAlign = 'center';
-            ctx.textBaseline = 'middle';
-            ctx.fillText('Are you sure?', 400, 100);
+            confirmCtx.fillStyle = '#F8F6F3';
+            createRoundedRect(confirmCtx, 20, 20, 660, 360, radius - 10);
+            confirmCtx.fill();
             
-            ctx.font = '24px -apple-system, BlinkMacSystemFont, Arial, sans-serif';
-            ctx.fillStyle = '#34495E';
-            const choiceText = `Choice ${choice.id}: ${choice.text.substring(0, 35)}...`;
-            ctx.fillText(choiceText, 400, 150);
+            // Add text
+            confirmCtx.fillStyle = '#2C3E50';
+            confirmCtx.font = 'bold 32px -apple-system, BlinkMacSystemFont, Arial, sans-serif';
+            confirmCtx.textAlign = 'center';
+            confirmCtx.textBaseline = 'middle';
+            confirmCtx.fillText('Are you sure?', 350, 80);
             
-            ctx.fillStyle = '#27AE60'; // Soft green
-            ctx.font = 'bold 22px -apple-system, BlinkMacSystemFont, Arial, sans-serif';
-            ctx.fillText('Point UP to confirm', 400, 220);
-            ctx.fillStyle = '#E74C3C'; // Soft red
-            ctx.fillText('Point DOWN to cancel', 400, 260);
+            confirmCtx.font = '20px -apple-system, BlinkMacSystemFont, Arial, sans-serif';
+            confirmCtx.fillStyle = '#34495E';
+            const choiceText = `Choice ${choice.id}: ${choice.text.substring(0, 40)}...`;
+            confirmCtx.fillText(choiceText, 350, 130);
             
-            const textTexture = new THREE.CanvasTexture(canvas);
-            const textMaterial = new THREE.MeshBasicMaterial({
-                map: textTexture,
-                transparent: true
+            confirmCtx.fillStyle = '#27AE60';
+            confirmCtx.font = 'bold 18px -apple-system, BlinkMacSystemFont, Arial, sans-serif';
+            confirmCtx.fillText('Point UP to confirm', 350, 220);
+            confirmCtx.fillStyle = '#E74C3C';
+            confirmCtx.fillText('Point DOWN to cancel', 350, 250);
+            
+            const confirmTexture = new THREE.CanvasTexture(confirmCanvas);
+            const confirmMaterial = new THREE.MeshBasicMaterial({
+                map: confirmTexture,
+                transparent: true,
+                opacity: 0.95
             });
             
-            const textMesh = new THREE.Mesh(
-                new THREE.PlaneGeometry(1.9, 0.8),
-                textMaterial
+            const confirmMesh = new THREE.Mesh(
+                new THREE.PlaneGeometry(2.0, 1.1),
+                confirmMaterial
             );
-            textMesh.position.z = 0.01;
-            confirmationPanel.add(textMesh);
+            confirmationPanel.add(confirmMesh);
             
             scene.add(confirmationPanel);
         }
@@ -791,11 +699,11 @@
                 confirmationPanel = null;
             }
             
-            // Reset orb selections to soft teal-gray
+            // Reset orb selections
             choiceOrbs.forEach(orb => {
-                orb.userData.originalMaterial.color.setHex(0x8FB8B8);
-                orb.userData.glow.material.color.setHex(0xB8D4D4);
-                orb.userData.glow.material.opacity = 0.5;
+                orb.userData.originalMaterial.color.setHex(0x3A5FCD);
+                orb.userData.ring.material.color.setHex(0x87CEEB);
+                orb.userData.ring.material.opacity = 0.6;
                 orb.scale.set(1, 1, 1);
             });
         }
@@ -803,9 +711,9 @@
         function processChoice(choice) {
             clearDecisionUI();
             
-            // Reset video speed and unmute audio
+            // Reset video speed and unmute
             videoElement.playbackRate = 1.0;
-            videoElement.muted = false; // Restore audio
+            videoElement.muted = false;
             isDecisionTime = false;
             isConfirming = false;
             
@@ -817,79 +725,108 @@
                     } else {
                         startScenario(choice.next);
                     }
-                }, 2000);
+                }, 1500);
             } else {
                 showTransition('incorrect');
                 setTimeout(() => {
                     startScenario(currentScenario); // Repeat scenario
-                }, 2000);
+                }, 1500);
             }
         }
         
         function showTransition(type) {
-            const color = type === 'correct' ? 0x44ff44 : 0xff4444;
-            const text = type === 'correct' ? 'Correct!' : 'Try Again';
+            clearTransitionEffect();
             
-            // Create transition effect
-            transitionEffect = new THREE.Group();
+            const isCorrect = type === 'correct';
+            const color = isCorrect ? 0x44AA44 : 0xAA4444;
+            const message = isCorrect ? 'Correct!' : 'Try Again';
             
-            // Flash effect
-            const flashGeometry = new THREE.SphereGeometry(15, 16, 16);
-            const flashMaterial = new THREE.MeshBasicMaterial({
+            // Create subtle colored sphere overlay
+            const sphereGeometry = new THREE.SphereGeometry(12, 32, 16);
+            const sphereMaterial = new THREE.MeshBasicMaterial({
                 color: color,
                 transparent: true,
-                opacity: 0.3,
+                opacity: 0.15,
                 side: THREE.BackSide
             });
-            const flash = new THREE.Mesh(flashGeometry, flashMaterial);
-            transitionEffect.add(flash);
+            transitionSphere = new THREE.Mesh(sphereGeometry, sphereMaterial);
+            scene.add(transitionSphere);
             
-            // Text
-            const canvas = document.createElement('canvas');
-            canvas.width = 512;
-            canvas.height = 256;
-            const ctx = canvas.getContext('2d');
+            // Create elegant text display
+            const textCanvas = document.createElement('canvas');
+            textCanvas.width = 512;
+            textCanvas.height = 256;
+            const textCtx = textCanvas.getContext('2d');
             
-            ctx.fillStyle = type === 'correct' ? '#44ff44' : '#ff4444';
-            ctx.font = 'bold 72px Arial';
-            ctx.textAlign = 'center';
-            ctx.textBaseline = 'middle';
-            ctx.fillText(text, 256, 128);
+            // Subtle background
+            const gradient = textCtx.createRadialGradient(256, 128, 50, 256, 128, 200);
+            gradient.addColorStop(0, 'rgba(255, 255, 255, 0.9)');
+            gradient.addColorStop(1, 'rgba(255, 255, 255, 0.3)');
+            textCtx.fillStyle = gradient;
+            textCtx.fillRect(0, 0, 512, 256);
             
-            const textTexture = new THREE.CanvasTexture(canvas);
+            // Text with shadow
+            textCtx.shadowColor = 'rgba(0, 0, 0, 0.3)';
+            textCtx.shadowBlur = 8;
+            textCtx.shadowOffsetY = 4;
+            textCtx.fillStyle = isCorrect ? '#2E7D32' : '#C62828';
+            textCtx.font = 'bold 54px -apple-system, BlinkMacSystemFont, Arial, sans-serif';
+            textCtx.textAlign = 'center';
+            textCtx.textBaseline = 'middle';
+            textCtx.fillText(message, 256, 128);
+            
+            const textTexture = new THREE.CanvasTexture(textCanvas);
             const textMaterial = new THREE.MeshBasicMaterial({
                 map: textTexture,
                 transparent: true
             });
             
-            const textMesh = new THREE.Mesh(
+            transitionText = new THREE.Mesh(
                 new THREE.PlaneGeometry(3, 1.5),
                 textMaterial
             );
-            textMesh.position.set(0, 1.6, -2);
-            transitionEffect.add(textMesh);
+            transitionText.position.set(0, 1.6, -2);
+            scene.add(transitionText);
             
-            scene.add(transitionEffect);
-            
-            // Animate transition
+            // Animate transition with subtle effect
             let startTime = Date.now();
             const animateTransition = () => {
                 const elapsed = Date.now() - startTime;
-                const progress = Math.min(elapsed / 2000, 1);
+                const progress = Math.min(elapsed / 1500, 1);
                 
-                flash.material.opacity = 0.3 * (1 - progress);
-                textMesh.material.opacity = 1 - progress;
+                if (transitionSphere) {
+                    // Gentle fade for sphere overlay
+                    transitionSphere.material.opacity = 0.15 * (1 - progress);
+                }
+                
+                if (transitionText) {
+                    // Fade out text more gradually
+                    if (progress > 0.3) {
+                        const textProgress = (progress - 0.3) / 0.7;
+                        transitionText.material.opacity = 1 - textProgress;
+                    }
+                }
                 
                 if (progress < 1) {
                     requestAnimationFrame(animateTransition);
                 } else {
-                    scene.remove(transitionEffect);
-                    transitionEffect = null;
+                    clearTransitionEffect();
                 }
             };
             animateTransition();
             
-            updateStatus(type === 'correct' ? 'Correct choice! Proceeding...' : 'Incorrect. Let\'s try again...');
+            updateStatus(isCorrect ? 'Correct choice! Proceeding...' : 'Incorrect. Let\'s try again...');
+        }
+        
+        function clearTransitionEffect() {
+            if (transitionSphere) {
+                scene.remove(transitionSphere);
+                transitionSphere = null;
+            }
+            if (transitionText) {
+                scene.remove(transitionText);
+                transitionText = null;
+            }
         }
         
         function clearDecisionUI() {
@@ -911,8 +848,9 @@
         
         function completeTraining() {
             clearDecisionUI();
+            clearTransitionEffect();
             
-            // Show completion message
+            // Show completion message with rounded corners
             const completionGroup = new THREE.Group();
             completionGroup.position.set(0, 1.6, -2);
             
@@ -921,20 +859,31 @@
             canvas.height = 512;
             const ctx = canvas.getContext('2d');
             
-            // Background
+            // Rounded background
+            const radius = 40;
+            ctx.fillStyle = '#1B5E20';
+            createRoundedRect(ctx, 20, 20, 984, 472, radius);
+            ctx.fill();
+            
+            ctx.fillStyle = '#2E7D32';
+            createRoundedRect(ctx, 30, 30, 964, 452, radius - 10);
+            ctx.fill();
+            
+            // Gradient overlay
             const gradient = ctx.createLinearGradient(0, 0, 0, 512);
-            gradient.addColorStop(0, 'rgba(0, 100, 0, 0.9)');
-            gradient.addColorStop(1, 'rgba(0, 50, 0, 0.9)');
+            gradient.addColorStop(0, 'rgba(76, 175, 80, 0.3)');
+            gradient.addColorStop(1, 'rgba(27, 94, 32, 0.3)');
             ctx.fillStyle = gradient;
-            ctx.fillRect(0, 0, 1024, 512);
+            createRoundedRect(ctx, 30, 30, 964, 452, radius - 10);
+            ctx.fill();
             
             ctx.fillStyle = '#ffffff';
-            ctx.font = 'bold 48px Arial';
+            ctx.font = 'bold 48px -apple-system, BlinkMacSystemFont, Arial, sans-serif';
             ctx.textAlign = 'center';
             ctx.textBaseline = 'middle';
             ctx.fillText('Training Complete!', 512, 200);
             
-            ctx.font = '24px Arial';
+            ctx.font = '24px -apple-system, BlinkMacSystemFont, Arial, sans-serif';
             ctx.fillText('Well done! You have completed all scenarios.', 512, 280);
             ctx.fillText('Exit VR to return to the main menu.', 512, 320);
             
@@ -974,13 +923,12 @@
         }
         
         function render() {
-            // Remove excessive orb animations - keep them static and stable
-            // Only minimal glow pulsing for subtle life
+            // Subtle animation for choice orbs - minimal glow pulsing
             choiceOrbs.forEach((orb, index) => {
-                if (orb.userData.glow) {
-                    const time = Date.now() * 0.0005; // Much slower
-                    const pulse = 0.4 + Math.sin(time + index * 0.5) * 0.05; // Very subtle
-                    orb.userData.glow.material.opacity = pulse;
+                if (orb.userData.ring) {
+                    const time = Date.now() * 0.001;
+                    const pulse = 0.6 + Math.sin(time + index * 0.8) * 0.1;
+                    orb.userData.ring.material.opacity = pulse;
                 }
             });
             
@@ -1011,13 +959,11 @@
             
             // Clear scene
             clearDecisionUI();
+            clearTransitionEffect();
+            
             if (immersiveSphere) {
                 scene.remove(immersiveSphere);
                 immersiveSphere = null;
-            }
-            if (transitionEffect) {
-                scene.remove(transitionEffect);
-                transitionEffect = null;
             }
             
             // Remove controllers
