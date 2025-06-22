@@ -475,7 +475,7 @@
             choiceOrbs = [];
             
             const orbGroup = new THREE.Group();
-            orbGroup.position.set(0, 0.6, -1.8); // Moved down below text panel
+            orbGroup.position.set(0, 0.6, -1.2); // Moved closer to user (was -1.8)
             
             choices.forEach((choice, index) => {
                 // Arrange orbs in two rows
@@ -502,18 +502,6 @@
                 
                 const orb = new THREE.Mesh(orbGeometry, orbMaterial);
                 orb.position.set(x, y, z);
-                
-                // Add outer glow ring
-                const ringGeometry = new THREE.RingGeometry(0.09, 0.11, 16);
-                const ringMaterial = new THREE.MeshBasicMaterial({
-                    color: 0x87CEEB, // Light blue
-                    transparent: true,
-                    opacity: 0.6,
-                    side: THREE.DoubleSide
-                });
-                const ring = new THREE.Mesh(ringGeometry, ringMaterial);
-                ring.lookAt(camera.position);
-                orb.add(ring);
                 
                 // Add number label with better contrast
                 const numberCanvas = document.createElement('canvas');
@@ -550,8 +538,7 @@
                 orb.userData = {
                     isChoice: true,
                     choice: choice,
-                    originalMaterial: orbMaterial,
-                    ring: ring
+                    originalMaterial: orbMaterial
                 };
                 
                 orbGroup.add(orb);
@@ -603,15 +590,12 @@
             // Reset all orbs to default blue
             choiceOrbs.forEach(orb => {
                 orb.userData.originalMaterial.color.setHex(0x3A5FCD);
-                orb.userData.ring.material.opacity = 0.6;
                 orb.scale.set(1, 1, 1);
             });
             
             // Highlight selected with gold
             selectedChoice = choiceOrb.userData.choice;
             choiceOrb.userData.originalMaterial.color.setHex(0xFFD700);
-            choiceOrb.userData.ring.material.color.setHex(0xFFF8DC);
-            choiceOrb.userData.ring.material.opacity = 0.8;
             choiceOrb.scale.set(1.2, 1.2, 1.2);
             
             showConfirmation(selectedChoice);
@@ -702,8 +686,6 @@
             // Reset orb selections
             choiceOrbs.forEach(orb => {
                 orb.userData.originalMaterial.color.setHex(0x3A5FCD);
-                orb.userData.ring.material.color.setHex(0x87CEEB);
-                orb.userData.ring.material.opacity = 0.6;
                 orb.scale.set(1, 1, 1);
             });
         }
@@ -923,15 +905,6 @@
         }
         
         function render() {
-            // Subtle animation for choice orbs - minimal glow pulsing
-            choiceOrbs.forEach((orb, index) => {
-                if (orb.userData.ring) {
-                    const time = Date.now() * 0.001;
-                    const pulse = 0.6 + Math.sin(time + index * 0.8) * 0.1;
-                    orb.userData.ring.material.opacity = pulse;
-                }
-            });
-            
             // Update video texture
             if (videoTexture && videoElement.readyState >= videoElement.HAVE_CURRENT_DATA) {
                 videoTexture.needsUpdate = true;
